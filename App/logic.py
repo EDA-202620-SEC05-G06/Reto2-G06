@@ -246,6 +246,15 @@ def _cmp_req1(a, b):
     return a["Order_ID"] < b["Order_ID"]
 
 
+def _cmp_req5(a, b):
+    """Req5: descendente por recaudo; desempate Boxes_Shipped total desc, luego nombre asc."""
+    if a["amount_total"] != b["amount_total"]:
+        return a["amount_total"] > b["amount_total"]
+    if a["boxes_total"] != b["boxes_total"]:
+        return a["boxes_total"] > b["boxes_total"]
+    return a["product"] < b["product"]
+
+
 # =============================================================================
 # Requerimiento 1 (Individual): pedidos por mes y rango de descuento
 # =============================================================================
@@ -296,13 +305,83 @@ def req_1(catalog, year, month, disc_min, disc_max):
 
 
 # =============================================================================
-# Requerimiento 5 (Grupal): pendiente (se implementa en el siguiente commit)
+# Requerimiento 5 (Grupal): N productos con mayor recaudo por pais y fechas
 # =============================================================================
 
 def req_5(catalog, n, country, date_ini, date_fin):
-    """Requerimiento 5 (grupal) - se implementa en el siguiente commit."""
-    # TODO: implementar Requerimiento 5
-    pass
+    """
+    Obtiene los N productos con mayor recaudo en un pais durante [date_ini,
+    date_fin]. Accede al bucket del pais en la tabla de hash orders_by_country y
+    agrega por producto en una segunda tabla de hash (NO recorre la lista
+    principal de pedidos).
+
+    Retorna un dict con el tiempo, el numero de pedidos filtrados, el numero de
+    productos diferentes, el recaudo total y el top N de productos.
+    """
+    start = get_time()
+
+    country_bucket = mp.get(catalog["orders_by_country"], country)
+
+    by_product = mp.new_map(31, 4.0)
+    total_orders = 0
+    total_amount = 0.0
+
+    if country_bucket is not None:
+        for order in country_bucket["elements"]:
+            if date_ini <= order["Order_Date"] <= date_fin:
+                total_orders += 1
+                total_amount += order["Amount"]
+                _accumulate_product(by_product, order)
+
+    # Construir array_list de resumenes por producto a partir del mapa.
+    products = al.new_list()
+    for acc in mp.value_set(by_product)["elements"]:
+        acc["avg_price"] = (acc["price_sum"] / acc["count"]) if acc["count"] > 0 else 0.0
+        acc["avg_discount"] = (acc["disc_sum"] / acc["count"]) if acc["count"] > 0 else 0.0
+        al.add_last(products, acc)
+
+    num_products = al.size(products)
+
+    sort.merge_sort(products, _cmp_req5)
+
+    top = al.new_list()
+    limit = n if n < num_products else num_products
+    i = 0
+    while i < limit:
+        al.add_last(top, al.get_element(products, i))
+        i += 1
+
+    stop = get_time()
+    return {
+        "time_ms": delta_time(start, stop),
+        "total_orders": total_orders,
+        "num_products": num_products,
+        "total_amount": total_amount,
+        "top": top,
+    }
+
+
+def _accumulate_product(by_product, order):
+    """Acumula las metricas del pedido en el resumen del producto (tabla de hash)."""
+    key = order["Product"]
+    acc = mp.get(by_product, key)
+    if acc is None:
+        acc = {
+            "product": key,
+            "count": 0,
+            "boxes_total": 0,
+            "amount_total": 0.0,
+            "price_sum": 0.0,
+            "disc_sum": 0.0,
+            "marketing_total": 0.0,
+        }
+        mp.put(by_product, key, acc)
+    acc["count"] += 1
+    acc["boxes_total"] += order["Boxes_Shipped"]
+    acc["amount_total"] += order["Amount"]
+    acc["price_sum"] += order["Price_per_Box"]
+    acc["disc_sum"] += order["Discount_Pct"]
+    acc["marketing_total"] += order["Marketing_Spend"]
 
 
 # =============================================================================

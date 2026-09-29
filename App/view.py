@@ -198,12 +198,41 @@ def print_req_1(control):
 # =============================================================================
 # Requerimiento 5
 # =============================================================================
-# Requerimiento 5
-# =============================================================================
 
 def print_req_5(control):
-    """Se implementa en el siguiente commit."""
-    print("Requerimiento 5 pendiente (se agrega en el siguiente commit).")
+    """Solicita parametros, ejecuta el Requerimiento 5 y presenta el resultado."""
+    try:
+        n = int(input("Numero N de productos a consultar: ").strip())
+        country = input("Pais (Country): ").strip()
+        date_ini = input("Fecha inicial (YYYY-MM-DD): ").strip()
+        date_fin = input("Fecha final (YYYY-MM-DD): ").strip()
+    except ValueError:
+        print("Entrada invalida. Intente de nuevo.")
+        return
+
+    result = logic.req_5(control, n, country, date_ini, date_fin)
+
+    print("\n--- Requerimiento 5 ---")
+    print("Tiempo de ejecucion: %.2f ms" % result["time_ms"])
+    print("Pedidos que cumplieron el filtro (pais + fechas): %d" % result["total_orders"])
+    print("Productos diferentes encontrados: %d" % result["num_products"])
+    print("Recaudo total de los pedidos filtrados: %.2f" % result["total_amount"])
+
+    if result["num_products"] == 0:
+        print("\nNo se encontraron pedidos para el pais y rango de fechas indicados.")
+        return
+
+    print("\nTop %d productos por recaudo:" % n)
+    headers = ["Product", "Pedidos", "Boxes_Total", "Recaudo",
+               "Precio_Prom", "Desc_Prom", "Marketing_Total"]
+    rows = []
+    for p in result["top"]["elements"]:
+        rows.append([
+            p["product"], p["count"], p["boxes_total"],
+            round(p["amount_total"], 2), round(p["avg_price"], 2),
+            round(p["avg_discount"], 2), round(p["marketing_total"], 2),
+        ])
+    _print_table(headers, rows)
 
 
 # =============================================================================
