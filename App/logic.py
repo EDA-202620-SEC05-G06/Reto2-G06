@@ -3,7 +3,7 @@ LOGICA (controlador) - ISIS1225 Reto 2 (Grupo 06).
 
 Carga de datos y requerimientos.
 
-Responsable de este archivo (parcial): Requerimiento 1 y Requerimiento 5.
+Requerimientos implementados: 1, 2, 5 y 6.
 La carga de datos (load_data) es infraestructura compartida del grupo: se deja
 implementada aqui porque construye las tablas de hash que consultan TODOS los
 requerimientos. El equipo debe conciliar esta seccion con el resto del reto.
@@ -12,7 +12,8 @@ Estructuras del curso usadas (carpeta DataStructures):
   - array_list             -> listas basadas en arreglo
   - single_linked_list     -> buckets del mapa por Separate Chaining
   - map_separate_chaining  -> tablas de hash por encadenamiento separado
-  - map_linear_probing     -> tablas de hash por sondeo lineal (disponible)
+  - map_linear_probing     -> tablas de hash por sondeo lineal (conteo por
+                              producto del Req. 2, agregacion por pais del Req. 6)
   - sorting.merge_sort     -> ordenamiento generico O(n log n) y estable
 """
 
@@ -21,6 +22,7 @@ import csv
 
 import DataStructures.List.array_list as al
 import DataStructures.Map.map_separate_chaining as mp
+import DataStructures.Map.map_linear_probing as lp
 import DataStructures.Sort.sorting as sort
 
 # Se aumenta el limite de campos de lectura del CSV segun la nota del reto.
@@ -39,7 +41,9 @@ def new_logic():
       - orders_by_month:   Separate Chaining. Llave "YYYY-MM" -> array_list de
                            pedidos de ese mes. Soporta el Requerimiento 1.
       - orders_by_country: Separate Chaining. Llave Country -> array_list de
-                           pedidos de ese pais. Soporta el Requerimiento 5.
+                           pedidos de ese pais. Soporta los Requerimientos 2 y 5.
+      - orders_by_product: Separate Chaining. Llave Product -> array_list de
+                           pedidos de ese producto. Soporta el Requerimiento 6.
       - channel_count:     Separate Chaining. Llave Channel -> numero de pedidos
                            del canal. Soporta el reporte de la carga.
     """
@@ -47,6 +51,7 @@ def new_logic():
         "orders": al.new_list(),
         "orders_by_month": mp.new_map(31, 4.0),
         "orders_by_country": mp.new_map(31, 4.0),
+        "orders_by_product": mp.new_map(31, 4.0),
         "channel_count": mp.new_map(11, 4.0),
         # Datos de resumen calculados durante la carga:
         "min_amount_order": None,
@@ -119,6 +124,7 @@ def load_data(catalog, filename):
             al.add_last(catalog["orders"], order)
             _index_by_month(catalog, order)
             _index_by_country(catalog, order)
+            _index_by_product(catalog, order)
             _count_channel(catalog, order)
             _track_summary(catalog, order)
     stop = get_time()
@@ -143,6 +149,16 @@ def _index_by_country(catalog, order):
         bucket = al.new_list()
         mp.put(catalog["orders_by_country"], key, bucket)
     al.add_last(bucket, order)
+
+
+def _index_by_product(catalog, order):
+    """Agrega el pedido al bucket del producto en el mapa orders_by_product."""
+    llave = order["Product"]
+    pedidosprod = mp.get(catalog["orders_by_product"], llave)
+    if pedidosprod is None:
+        pedidosprod = al.new_list()
+        mp.put(catalog["orders_by_product"], llave, pedidosprod)
+    al.add_last(pedidosprod, order)
 
 
 def _count_channel(catalog, order):
@@ -246,6 +262,15 @@ def _cmp_req1(a, b):
     return a["Order_ID"] < b["Order_ID"]
 
 
+def _cmp_req2(a, b):
+    """Req2: ascendente por Boxes_Shipped; desempate Order_Date desc, luego Order_ID asc."""
+    if a["Boxes_Shipped"] != b["Boxes_Shipped"]:
+        return a["Boxes_Shipped"] < b["Boxes_Shipped"]
+    if a["Order_Date"] != b["Order_Date"]:
+        return a["Order_Date"] > b["Order_Date"]
+    return a["Order_ID"] < b["Order_ID"]
+
+
 def _cmp_req5(a, b):
     """Req5: descendente por recaudo; desempate Boxes_Shipped total desc, luego nombre asc."""
     if a["amount_total"] != b["amount_total"]:
@@ -253,6 +278,15 @@ def _cmp_req5(a, b):
     if a["boxes_total"] != b["boxes_total"]:
         return a["boxes_total"] > b["boxes_total"]
     return a["product"] < b["product"]
+
+
+def _cmp_req6(a, b):
+    """Req6: descendente por eficiencia; desempate Amount total desc, luego Country asc."""
+    if a["efficiency"] != b["efficiency"]:
+        return a["efficiency"] > b["efficiency"]
+    if a["amount_total"] != b["amount_total"]:
+        return a["amount_total"] > b["amount_total"]
+    return a["country"] < b["country"]
 
 
 # =============================================================================
@@ -301,6 +335,70 @@ def req_1(catalog, year, month, disc_min, disc_max):
         "avg_price": avg_price,
         "avg_boxes": avg_boxes,
         "orders": result,
+    }
+
+
+# =============================================================================
+# Requerimiento 2 (Individual): pedidos por pais y rango de cajas enviadas
+# =============================================================================
+
+def req_2(catalog, pais, cajasmin, cajasmax):
+    """
+    Consulta los pedidos de un pais cuyo Boxes_Shipped esta en [cajasmin,
+    cajasmax]. Accede directamente al bucket del pais en la tabla de hash
+    orders_by_country (NO recorre la lista principal de pedidos) y cuenta los
+    pedidos por producto en una tabla de hash por Linear Probing.
+
+    Retorna un dict con el tiempo, el conteo, el numero de productos diferentes,
+    los promedios de Marketing_Spend y Amount, el producto mas frecuente con su
+    numero de pedidos, y la lista de pedidos ordenada de manera ascendente por
+    Boxes_Shipped.
+    """
+    inicio = get_time()
+
+    pedidospais = mp.get(catalog["orders_by_country"], pais)
+
+    resultado = al.new_list()
+    cuentaprod = lp.new_map(17, 0.5)
+    sumamercadeo = 0.0
+    sumamonto = 0.0
+
+    if pedidospais is not None:
+        for pedido in pedidospais["elements"]:
+            if cajasmin <= pedido["Boxes_Shipped"] <= cajasmax:
+                al.add_last(resultado, pedido)
+                sumamercadeo += pedido["Marketing_Spend"]
+                sumamonto += pedido["Amount"]
+                actual = lp.get(cuentaprod, pedido["Product"])
+                if actual is None:
+                    actual = 0
+                lp.put(cuentaprod, pedido["Product"], actual + 1)
+
+    # Producto mas frecuente; ante empate, el de nombre alfabeticamente menor.
+    prodtop = None
+    cuentatop = 0
+    for producto in lp.key_set(cuentaprod)["elements"]:
+        frecuencia = lp.get(cuentaprod, producto)
+        if frecuencia > cuentatop or (frecuencia == cuentatop and producto < prodtop):
+            prodtop = producto
+            cuentatop = frecuencia
+
+    sort.merge_sort(resultado, _cmp_req2)
+
+    total = al.size(resultado)
+    prommercadeo = (sumamercadeo / total) if total > 0 else 0.0
+    prommonto = (sumamonto / total) if total > 0 else 0.0
+
+    fin = get_time()
+    return {
+        "time_ms": delta_time(inicio, fin),
+        "count": total,
+        "num_products": lp.size(cuentaprod),
+        "avg_marketing": prommercadeo,
+        "avg_amount": prommonto,
+        "top_product": prodtop,
+        "top_product_count": cuentatop,
+        "orders": resultado,
     }
 
 
@@ -385,14 +483,87 @@ def _accumulate_product(by_product, order):
 
 
 # =============================================================================
-# Requerimientos del equipo (pendientes por otros integrantes)
+# Requerimiento 6 (Grupal): N paises con mayor eficiencia de mercadeo
 # =============================================================================
 
-def req_2(catalog):
-    """Requerimiento 2 (individual) - responsable: otro integrante del grupo."""
-    # TODO: implementar por el integrante asignado
-    pass
+def req_6(catalog, n, producto, fechaini, fechafin):
+    """
+    Obtiene los N paises con mayor eficiencia de mercadeo para un producto
+    durante [fechaini, fechafin]. Accede al bucket del producto en la tabla de
+    hash orders_by_product (NO recorre la lista principal de pedidos) y agrega
+    por pais en una tabla de hash por Linear Probing.
 
+    La eficiencia de un pais es suma(Amount) / suma(Marketing_Spend). Los paises
+    con suma de Marketing_Spend igual a cero no entran al ranking.
+
+    Retorna un dict con el tiempo, el numero de pedidos filtrados, el numero de
+    paises diferentes, el Amount total, el Marketing_Spend total y el top N.
+    """
+    inicio = get_time()
+
+    pedidosprod = mp.get(catalog["orders_by_product"], producto)
+
+    porpais = lp.new_map(11, 0.5)
+    totalpedidos = 0
+    totalmonto = 0.0
+    totalmercadeo = 0.0
+
+    if pedidosprod is not None:
+        for pedido in pedidosprod["elements"]:
+            if fechaini <= pedido["Order_Date"] <= fechafin:
+                totalpedidos += 1
+                totalmonto += pedido["Amount"]
+                totalmercadeo += pedido["Marketing_Spend"]
+                acumulado = lp.get(porpais, pedido["Country"])
+                if acumulado is None:
+                    acumulado = {
+                        "country": pedido["Country"],
+                        "count": 0,
+                        "amount_total": 0.0,
+                        "marketing_total": 0.0,
+                        "boxes_total": 0,
+                        "price_sum": 0.0,
+                    }
+                    lp.put(porpais, pedido["Country"], acumulado)
+                acumulado["count"] += 1
+                acumulado["amount_total"] += pedido["Amount"]
+                acumulado["marketing_total"] += pedido["Marketing_Spend"]
+                acumulado["boxes_total"] += pedido["Boxes_Shipped"]
+                acumulado["price_sum"] += pedido["Price_per_Box"]
+
+    # Solo entran al ranking los paises con eficiencia calculable.
+    paises = lp.value_set(porpais)
+    ranking = al.new_list()
+    for acumulado in paises["elements"]:
+        if acumulado["marketing_total"] > 0:
+            acumulado["avg_price"] = acumulado["price_sum"] / acumulado["count"]
+            acumulado["efficiency"] = (acumulado["amount_total"]
+                                       / acumulado["marketing_total"])
+            al.add_last(ranking, acumulado)
+
+    sort.merge_sort(ranking, _cmp_req6)
+
+    top = al.new_list()
+    limite = n if n < al.size(ranking) else al.size(ranking)
+    i = 0
+    while i < limite:
+        al.add_last(top, al.get_element(ranking, i))
+        i += 1
+
+    fin = get_time()
+    return {
+        "time_ms": delta_time(inicio, fin),
+        "total_orders": totalpedidos,
+        "num_countries": al.size(paises),
+        "total_amount": totalmonto,
+        "total_marketing": totalmercadeo,
+        "top": top,
+    }
+
+
+# =============================================================================
+# Requerimientos del equipo (pendientes por otros integrantes)
+# =============================================================================
 
 def req_3(catalog):
     """Requerimiento 3 (individual) - responsable: otro integrante del grupo."""
@@ -402,12 +573,6 @@ def req_3(catalog):
 
 def req_4(catalog):
     """Requerimiento 4 (grupal) - pendiente."""
-    # TODO: implementar (grupal)
-    pass
-
-
-def req_6(catalog):
-    """Requerimiento 6 (grupal) - pendiente."""
     # TODO: implementar (grupal)
     pass
 

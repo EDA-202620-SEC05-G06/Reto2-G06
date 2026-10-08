@@ -1,8 +1,8 @@
 """
 VISTA (interfaz de consola) - ISIS1225 Reto 2 (Grupo 06).
 
-Menu principal y presentacion de resultados de la carga, el Requerimiento 1 y el
-Requerimiento 5. Los demas requerimientos quedan a cargo de otros integrantes.
+Menu principal y presentacion de resultados de la carga y los Requerimientos 1,
+2, 5 y 6. Los demas requerimientos quedan a cargo de otros integrantes.
 """
 
 import sys
@@ -43,11 +43,11 @@ def print_menu():
     print("===================================================")
     print("0- Cargar informacion")
     print("1- Ejecutar Requerimiento 1 (mes + rango de descuento)")
-    print("2- Ejecutar Requerimiento 2")
+    print("2- Ejecutar Requerimiento 2 (pais + rango de cajas enviadas)")
     print("3- Ejecutar Requerimiento 3")
     print("4- Ejecutar Requerimiento 4")
     print("5- Ejecutar Requerimiento 5 (top N productos por recaudo)")
-    print("6- Ejecutar Requerimiento 6")
+    print("6- Ejecutar Requerimiento 6 (top N paises por eficiencia de mercadeo)")
     print("7- Salir")
 
 
@@ -92,7 +92,7 @@ def _sample_rows(a_list, row_fn):
         while i < 10:
             rows.append(row_fn(a_list["elements"][i]))
             i += 1
-        rows.append(["...", "...", "...", "...", "...", "...", "...", "...", "..."])
+        rows.append(["..."] * len(rows[0]))
         i = n - 10
         while i < n:
             rows.append(row_fn(a_list["elements"][i]))
@@ -196,6 +196,52 @@ def print_req_1(control):
 
 
 # =============================================================================
+# Requerimiento 2
+# =============================================================================
+
+def _req2_row(pedido):
+    """Fila para un pedido en el Requerimiento 2."""
+    return [
+        pedido["Order_ID"], pedido["Product"], pedido["Channel"],
+        pedido["Order_Date"], pedido["Boxes_Shipped"],
+        round(pedido["Price_per_Box"], 2), round(pedido["Marketing_Spend"], 2),
+        round(pedido["Amount"], 2),
+    ]
+
+
+def print_req_2(control):
+    """Solicita parametros, ejecuta el Requerimiento 2 y presenta el resultado."""
+    try:
+        pais = input("Pais (Country): ").strip()
+        cajasmin = int(input("Numero minimo de cajas enviadas: ").strip())
+        cajasmax = int(input("Numero maximo de cajas enviadas: ").strip())
+    except ValueError:
+        print("Entrada invalida. Intente de nuevo.")
+        return
+
+    resultado = logic.req_2(control, pais, cajasmin, cajasmax)
+
+    print("\n--- Requerimiento 2 ---")
+    print("Tiempo de ejecucion: %.2f ms" % resultado["time_ms"])
+    print("Pedidos que cumplieron el filtro: %d" % resultado["count"])
+    print("Productos diferentes en el resultado: %d" % resultado["num_products"])
+    print("Promedio Marketing_Spend: %.2f" % resultado["avg_marketing"])
+    print("Promedio Amount: %.2f" % resultado["avg_amount"])
+
+    if resultado["count"] == 0:
+        print("\nNo se encontraron pedidos para el pais y rango indicados.")
+        return
+
+    print("Producto mas frecuente: %s (%d pedidos)"
+          % (resultado["top_product"], resultado["top_product_count"]))
+
+    print("\nPedidos (ascendente por Boxes_Shipped):")
+    encabezados = ["Order_ID", "Product", "Channel", "Order_Date", "Boxes_Shipped",
+               "Price_per_Box", "Marketing_Spend", "Amount"]
+    _print_table(encabezados, _sample_rows(resultado["orders"], _req2_row))
+
+
+# =============================================================================
 # Requerimiento 5
 # =============================================================================
 
@@ -236,12 +282,49 @@ def print_req_5(control):
 
 
 # =============================================================================
-# Requerimientos a cargo de otros integrantes
+# Requerimiento 6
 # =============================================================================
 
-def print_req_2(control):
-    print("Requerimiento 2 pendiente (a cargo de otro integrante).")
+def print_req_6(control):
+    """Solicita parametros, ejecuta el Requerimiento 6 y presenta el resultado."""
+    try:
+        n = int(input("Numero N de paises a listar: ").strip())
+        producto = input("Producto (Product): ").strip()
+        fechaini = input("Fecha inicial (YYYY-MM-DD): ").strip()
+        fechafin = input("Fecha final (YYYY-MM-DD): ").strip()
+    except ValueError:
+        print("Entrada invalida. Intente de nuevo.")
+        return
 
+    resultado = logic.req_6(control, n, producto, fechaini, fechafin)
+
+    print("\n--- Requerimiento 6 ---")
+    print("Tiempo de ejecucion: %.2f ms" % resultado["time_ms"])
+    print("Pedidos que cumplieron el filtro (producto + fechas): %d" % resultado["total_orders"])
+    print("Paises diferentes encontrados: %d" % resultado["num_countries"])
+    print("Amount total de los pedidos filtrados: %.2f" % resultado["total_amount"])
+    print("Marketing_Spend total de los pedidos filtrados: %.2f" % resultado["total_marketing"])
+
+    if resultado["total_orders"] == 0:
+        print("\nNo se encontraron pedidos para el producto y rango de fechas indicados.")
+        return
+
+    print("\nTop %d paises por eficiencia de mercadeo:" % n)
+    encabezados = ["Country", "Pedidos", "Amount_Total", "Marketing_Total",
+                   "Boxes_Total", "Precio_Prom", "Eficiencia"]
+    filas = []
+    for pais in resultado["top"]["elements"]:
+        filas.append([
+            pais["country"], pais["count"], round(pais["amount_total"], 2),
+            round(pais["marketing_total"], 2), pais["boxes_total"],
+            round(pais["avg_price"], 2), round(pais["efficiency"], 4),
+        ])
+    _print_table(encabezados, filas)
+
+
+# =============================================================================
+# Requerimientos a cargo de otros integrantes
+# =============================================================================
 
 def print_req_3(control):
     print("Requerimiento 3 pendiente (a cargo de otro integrante).")
@@ -251,8 +334,6 @@ def print_req_4(control):
     print("Requerimiento 4 pendiente (grupal).")
 
 
-def print_req_6(control):
-    print("Requerimiento 6 pendiente (grupal).")
 
 
 # =============================================================================
