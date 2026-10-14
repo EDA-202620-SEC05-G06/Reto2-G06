@@ -1,371 +1,308 @@
-"""
-VISTA (interfaz de consola) - ISIS1225 Reto 2 (Grupo 06).
-
-Menu principal y presentacion de resultados de la carga y los Requerimientos 1,
-2, 5 y 6. Los demas requerimientos quedan a cargo de otros integrantes.
-"""
-
 import sys
-import os
-
+from tabulate import tabulate
 import App.logic as logic
+from DataStructures.List import array_list as lt
 
-# Se aumenta el limite de recursion segun la nota del reto (merge/quick sort).
 default_limit = 1000
-sys.setrecursionlimit(default_limit * 10)
+sys.setrecursionlimit(default_limit*10)
 
-# Impresion de tablas: se usa tabulate si esta disponible; si no, formato plano.
-try:
-    from tabulate import tabulate
-    _HAS_TABULATE = True
-except ImportError:
-    _HAS_TABULATE = False
-
-# Archivos de datos disponibles en la carpeta Data.
-DATA_FILES = {
-    "1": "chocolate_sale_100_elementos.csv",
-    "2": "chocolate_sale_20_ptc.csv",
-    "3": "chocolate_sale_40_ptc.csv",
-    "4": "chocolate_sale_60_ptc.csv",
-    "5": "chocolate_sale_80_ptc.csv",
-    "6": "chocolate_sale_100_ptc.csv",
-}
+archivos = ["chocolate_sale_100_elementos.csv", "chocolate_sale_20_ptc.csv", "chocolate_sale_40_ptc.csv", "chocolate_sale_60_ptc.csv", "chocolate_sale_80_ptc.csv", "chocolate_sale_100_ptc.csv"]
 
 
 def new_logic():
-    """Crea la instancia del controlador (catalogo)."""
-    return logic.new_logic()
+    control = logic.new_logic()
+    return control
 
 
 def print_menu():
-    print("\n===================================================")
-    print("           Reto 2 - Ventas de Chocolate (G06)")
-    print("===================================================")
-    print("0- Cargar informacion")
-    print("1- Ejecutar Requerimiento 1 (mes + rango de descuento)")
-    print("2- Ejecutar Requerimiento 2 (pais + rango de cajas enviadas)")
+    print("Bienvenido")
+    print("0- Cargar información")
+    print("1- Ejecutar Requerimiento 1")
+    print("2- Ejecutar Requerimiento 2")
     print("3- Ejecutar Requerimiento 3")
     print("4- Ejecutar Requerimiento 4")
-    print("5- Ejecutar Requerimiento 5 (top N productos por recaudo)")
-    print("6- Ejecutar Requerimiento 6 (top N paises por eficiencia de mercadeo)")
+    print("5- Ejecutar Requerimiento 5")
+    print("6- Ejecutar Requerimiento 6")
     print("7- Salir")
 
 
-# =============================================================================
-# Utilidades de impresion
-# =============================================================================
-
-def _print_table(headers, rows):
-    """Imprime una tabla con tabulate si esta disponible, o en formato plano."""
-    if len(rows) == 0:
-        print("(sin registros)")
-        return
-    if _HAS_TABULATE:
-        print(tabulate(rows, headers=headers, tablefmt="grid", floatfmt=".2f"))
+def filas_muestra(lista, formato):
+    filas = []
+    total = lt.size(lista)
+    if total > 20:
+        for pos in range(10):
+            filas.append(formato(lt.get_element(lista, pos)))
+        for pos in range(total - 10, total):
+            filas.append(formato(lt.get_element(lista, pos)))
     else:
-        print(" | ".join(str(h) for h in headers))
-        print("-" * 80)
-        for row in rows:
-            print(" | ".join(str(c) for c in row))
+        for pos in range(total):
+            filas.append(formato(lt.get_element(lista, pos)))
+    return filas
 
 
-def _order_row(order):
-    """Fila para un pedido en el Requerimiento 1."""
-    return [
-        order["Order_ID"], order["Product"], order["Country"], order["Channel"],
-        order["Order_Date"], round(order["Discount_Pct"], 2),
-        round(order["Price_per_Box"], 2), order["Boxes_Shipped"],
-        round(order["Amount"], 2),
-    ]
+def filas_todas(lista, formato):
+    filas = []
+    for pos in range(lt.size(lista)):
+        filas.append(formato(lt.get_element(lista, pos)))
+    return filas
 
 
-def _sample_rows(a_list, row_fn):
-    """
-    Aplica la regla de presentacion: si hay mas de 20 registros muestra los
-    primeros 10 y los ultimos 10; de lo contrario los muestra todos.
-    Retorna la lista de filas ya formateadas.
-    """
-    n = a_list["size"]
-    rows = []
-    if n > 20:
-        i = 0
-        while i < 10:
-            rows.append(row_fn(a_list["elements"][i]))
-            i += 1
-        rows.append(["..."] * len(rows[0]))
-        i = n - 10
-        while i < n:
-            rows.append(row_fn(a_list["elements"][i]))
-            i += 1
-    else:
-        for elem in a_list["elements"]:
-            rows.append(row_fn(elem))
-    return rows
+def no_cargado(control):
+    if lt.size(control["orders"]) == 0:
+        print("\nPrimero debe cargar la información (opción 0).")
+        return True
+    return False
 
 
-# =============================================================================
-# Carga de datos
-# =============================================================================
+carga_headers = ["Order_ID", "Product", "Country", "Channel", "Order_Date", "Boxes_Shipped", "Price_per_Box", "Amount"]
+
+
+def format_carga(order):
+    return [order["Order_ID"], order["Product"], order["Country"], order["Channel"], order["Order_Date"], order["Boxes_Shipped"], order["Price_per_Box"], order["Amount"]]
+
+
+def format_canal(canal):
+    return [canal["Channel"], canal["count"]]
+
 
 def load_data(control):
-    """Solicita el archivo a cargar, ejecuta la carga y presenta el reporte."""
     print("\nArchivos disponibles:")
-    for key in sorted(DATA_FILES):
-        print("  %s- %s" % (key, DATA_FILES[key]))
-    choice = input("Seleccione el archivo a cargar (1-6): ").strip()
-    filename = DATA_FILES.get(choice, DATA_FILES["1"])
+    for pos in range(len(archivos)):
+        print(f"{pos + 1}- {archivos[pos]}")
+    opcion = int(input("Seleccione el archivo a cargar (1-6): \n"))
+    if opcion < 1 or opcion > 6:
+        opcion = 1
+    archivo = archivos[opcion - 1]
 
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "Data")
-    filepath = os.path.join(data_dir, filename)
+    print(f"\nCargando {archivo} ...")
+    tiempocarga = logic.load_data(control, archivo)
+    reporte = logic.get_load_report(control)
 
-    print("\nCargando %s ...\n" % filename)
-    load_time = logic.load_data(control, filepath)
-    report = logic.get_load_report(control)
-
-    print("Tiempo de carga: %.2f ms" % load_time)
-    print("Total de pedidos cargados: %d" % report["total"])
+    print(f"\nTiempo de carga: {tiempocarga:.3f} [ms]")
+    print(f"Total de pedidos cargados: {reporte['total']}")
 
     print("\nTotal de pedidos por canal de venta:")
-    ch_rows = [[c["Channel"], c["count"]] for c in report["channels"]["elements"]]
-    _print_table(["Channel", "Pedidos"], ch_rows)
+    print(tabulate(filas_todas(reporte["channels"], format_canal), headers=["Channel", "Pedidos"], tablefmt="grid"))
 
-    print("\nRango de fechas de los pedidos:")
-    print("  Fecha mas antigua: %s" % report["min_date"])
-    print("  Fecha mas reciente: %s" % report["max_date"])
+    print(f"\nFecha más antigua: {reporte['min_date']}")
+    print(f"Fecha más reciente: {reporte['max_date']}")
 
-    print("\nPedido con MENOR Amount:")
-    _print_table(_carga_headers(), [_carga_row(report["min_amount_order"])])
-    print("\nPedido con MAYOR Amount:")
-    _print_table(_carga_headers(), [_carga_row(report["max_amount_order"])])
+    print("\nPedido de menor Amount:")
+    print(tabulate([format_carga(reporte["min_amount_order"])], headers=carga_headers, tablefmt="grid"))
 
-    print("\nPrimeros 5 pedidos (ordenados descendente por Amount):")
-    _print_table(_carga_headers(),
-                 [_carga_row(o) for o in report["first_five"]["elements"]])
-    print("\nUltimos 5 pedidos (ordenados descendente por Amount):")
-    _print_table(_carga_headers(),
-                 [_carga_row(o) for o in report["last_five"]["elements"]])
+    print("\nPedido de mayor Amount:")
+    print(tabulate([format_carga(reporte["max_amount_order"])], headers=carga_headers, tablefmt="grid"))
+
+    print("\nPrimeros 5 pedidos (descendente por Amount):")
+    print(tabulate(filas_todas(reporte["first_five"], format_carga), headers=carga_headers, tablefmt="grid"))
+
+    print("\nÚltimos 5 pedidos (descendente por Amount):")
+    print(tabulate(filas_todas(reporte["last_five"], format_carga), headers=carga_headers, tablefmt="grid"))
 
 
-def _carga_headers():
-    return ["Order_ID", "Product", "Country", "Channel", "Order_Date",
-            "Boxes_Shipped", "Price_per_Box", "Amount"]
+def format_req1(order):
+    return [order["Order_ID"], order["Product"], order["Country"], order["Channel"], order["Order_Date"], order["Discount_Pct"], order["Price_per_Box"], order["Boxes_Shipped"], order["Amount"]]
 
-
-def _carga_row(order):
-    if order is None:
-        return ["-"] * 8
-    return [
-        order["Order_ID"], order["Product"], order["Country"], order["Channel"],
-        order["Order_Date"], order["Boxes_Shipped"],
-        round(order["Price_per_Box"], 2), round(order["Amount"], 2),
-    ]
-
-
-# =============================================================================
-# Requerimiento 1
-# =============================================================================
 
 def print_req_1(control):
-    """Solicita parametros, ejecuta el Requerimiento 1 y presenta el resultado."""
-    try:
-        year = int(input("Año del pedido (YYYY): ").strip())
-        month = int(input("Mes del pedido (1-12): ").strip())
-        disc_min = float(input("Descuento minimo (%): ").strip())
-        disc_max = float(input("Descuento maximo (%): ").strip())
-    except ValueError:
-        print("Entrada invalida. Intente de nuevo.")
+    if no_cargado(control):
         return
 
-    result = logic.req_1(control, year, month, disc_min, disc_max)
+    anio = int(input("Ingrese el año del pedido (YYYY): \n"))
+    mes = int(input("Ingrese el mes del pedido (1-12): \n"))
+    descmin = float(input("Ingrese el descuento mínimo (%): \n"))
+    descmax = float(input("Ingrese el descuento máximo (%): \n"))
 
-    print("\n--- Requerimiento 1 ---")
-    print("Tiempo de ejecucion: %.2f ms" % result["time_ms"])
-    print("Pedidos que cumplieron el filtro: %d" % result["count"])
-    print("Monto total recaudado (suma Amount): %.2f" % result["total_amount"])
-    print("Promedio Price_per_Box: %.2f" % result["avg_price"])
-    print("Promedio Boxes_Shipped: %.2f" % result["avg_boxes"])
+    resultado = logic.req_1(control, anio, mes, descmin, descmax)
 
-    if result["count"] == 0:
-        print("\nNo se encontraron pedidos para el mes y rango indicados.")
+    print(f"\nTiempo de ejecución: {resultado['time_ms']:.3f} [ms]")
+    print(f"Pedidos que cumplieron el filtro: {resultado['count']}")
+    print(f"Monto total recaudado: {resultado['total_amount']:.2f}")
+    print(f"Promedio Price_per_Box: {resultado['avg_price']:.2f}")
+    print(f"Promedio Boxes_Shipped: {resultado['avg_boxes']:.2f}")
+
+    if resultado["count"] == 0:
+        print("\nNo se encontraron pedidos para ese mes y rango de descuento.")
         return
 
+    encabezados = ["Order_ID", "Product", "Country", "Channel", "Order_Date", "Discount_Pct", "Price_per_Box", "Boxes_Shipped", "Amount"]
     print("\nPedidos (descendente por Discount_Pct):")
-    headers = ["Order_ID", "Product", "Country", "Channel", "Order_Date",
-               "Discount_Pct", "Price_per_Box", "Boxes_Shipped", "Amount"]
-    _print_table(headers, _sample_rows(result["orders"], _order_row))
+    print(tabulate(filas_muestra(resultado["orders"], format_req1), headers=encabezados, tablefmt="grid"))
 
 
-# =============================================================================
-# Requerimiento 2
-# =============================================================================
-
-def _req2_row(pedido):
-    """Fila para un pedido en el Requerimiento 2."""
-    return [
-        pedido["Order_ID"], pedido["Product"], pedido["Channel"],
-        pedido["Order_Date"], pedido["Boxes_Shipped"],
-        round(pedido["Price_per_Box"], 2), round(pedido["Marketing_Spend"], 2),
-        round(pedido["Amount"], 2),
-    ]
+def format_req2(order):
+    return [order["Order_ID"], order["Product"], order["Channel"], order["Order_Date"], order["Boxes_Shipped"], order["Price_per_Box"], order["Marketing_Spend"], order["Amount"]]
 
 
 def print_req_2(control):
-    """Solicita parametros, ejecuta el Requerimiento 2 y presenta el resultado."""
-    try:
-        pais = input("Pais (Country): ").strip()
-        cajasmin = int(input("Numero minimo de cajas enviadas: ").strip())
-        cajasmax = int(input("Numero maximo de cajas enviadas: ").strip())
-    except ValueError:
-        print("Entrada invalida. Intente de nuevo.")
+    if no_cargado(control):
         return
+
+    pais = input("Ingrese el país: \n")
+    cajasmin = int(input("Ingrese el número mínimo de cajas enviadas: \n"))
+    cajasmax = int(input("Ingrese el número máximo de cajas enviadas: \n"))
 
     resultado = logic.req_2(control, pais, cajasmin, cajasmax)
 
-    print("\n--- Requerimiento 2 ---")
-    print("Tiempo de ejecucion: %.2f ms" % resultado["time_ms"])
-    print("Pedidos que cumplieron el filtro: %d" % resultado["count"])
-    print("Productos diferentes en el resultado: %d" % resultado["num_products"])
-    print("Promedio Marketing_Spend: %.2f" % resultado["avg_marketing"])
-    print("Promedio Amount: %.2f" % resultado["avg_amount"])
+    print(f"\nTiempo de ejecución: {resultado['time_ms']:.3f} [ms]")
+    print(f"Pedidos que cumplieron el filtro: {resultado['count']}")
+    print(f"Productos diferentes en el resultado: {resultado['num_products']}")
+    print(f"Promedio Marketing_Spend: {resultado['avg_marketing']:.2f}")
+    print(f"Promedio Amount: {resultado['avg_amount']:.2f}")
 
     if resultado["count"] == 0:
-        print("\nNo se encontraron pedidos para el pais y rango indicados.")
+        print("\nNo se encontraron pedidos para ese país y rango de cajas.")
         return
 
-    print("Producto mas frecuente: %s (%d pedidos)"
-          % (resultado["top_product"], resultado["top_product_count"]))
+    print(f"Producto más frecuente: {resultado['top_product']} ({resultado['top_product_count']} pedidos)")
 
+    encabezados = ["Order_ID", "Product", "Channel", "Order_Date", "Boxes_Shipped", "Price_per_Box", "Marketing_Spend", "Amount"]
     print("\nPedidos (ascendente por Boxes_Shipped):")
-    encabezados = ["Order_ID", "Product", "Channel", "Order_Date", "Boxes_Shipped",
-               "Price_per_Box", "Marketing_Spend", "Amount"]
-    _print_table(encabezados, _sample_rows(resultado["orders"], _req2_row))
+    print(tabulate(filas_muestra(resultado["orders"], format_req2), headers=encabezados, tablefmt="grid"))
 
 
-# =============================================================================
-# Requerimiento 5
-# =============================================================================
+def format_req3(order):
+    return [order["Order_ID"], order["Product"], order["Country"], order["Order_Date"], order["Marketing_Spend"], order["Boxes_Shipped"], order["Amount"], round(logic.aporte(order), 2)]
 
-def print_req_5(control):
-    """Solicita parametros, ejecuta el Requerimiento 5 y presenta el resultado."""
-    try:
-        n = int(input("Numero N de productos a consultar: ").strip())
-        country = input("Pais (Country): ").strip()
-        date_ini = input("Fecha inicial (YYYY-MM-DD): ").strip()
-        date_fin = input("Fecha final (YYYY-MM-DD): ").strip()
-    except ValueError:
-        print("Entrada invalida. Intente de nuevo.")
-        return
-
-    result = logic.req_5(control, n, country, date_ini, date_fin)
-
-    print("\n--- Requerimiento 5 ---")
-    print("Tiempo de ejecucion: %.2f ms" % result["time_ms"])
-    print("Pedidos que cumplieron el filtro (pais + fechas): %d" % result["total_orders"])
-    print("Productos diferentes encontrados: %d" % result["num_products"])
-    print("Recaudo total de los pedidos filtrados: %.2f" % result["total_amount"])
-
-    if result["num_products"] == 0:
-        print("\nNo se encontraron pedidos para el pais y rango de fechas indicados.")
-        return
-
-    print("\nTop %d productos por recaudo:" % n)
-    headers = ["Product", "Pedidos", "Boxes_Total", "Recaudo",
-               "Precio_Prom", "Desc_Prom", "Marketing_Total"]
-    rows = []
-    for p in result["top"]["elements"]:
-        rows.append([
-            p["product"], p["count"], p["boxes_total"],
-            round(p["amount_total"], 2), round(p["avg_price"], 2),
-            round(p["avg_discount"], 2), round(p["marketing_total"], 2),
-        ])
-    _print_table(headers, rows)
-
-
-# =============================================================================
-# Requerimiento 6
-# =============================================================================
-
-def print_req_6(control):
-    """Solicita parametros, ejecuta el Requerimiento 6 y presenta el resultado."""
-    try:
-        n = int(input("Numero N de paises a listar: ").strip())
-        producto = input("Producto (Product): ").strip()
-        fechaini = input("Fecha inicial (YYYY-MM-DD): ").strip()
-        fechafin = input("Fecha final (YYYY-MM-DD): ").strip()
-    except ValueError:
-        print("Entrada invalida. Intente de nuevo.")
-        return
-
-    resultado = logic.req_6(control, n, producto, fechaini, fechafin)
-
-    print("\n--- Requerimiento 6 ---")
-    print("Tiempo de ejecucion: %.2f ms" % resultado["time_ms"])
-    print("Pedidos que cumplieron el filtro (producto + fechas): %d" % resultado["total_orders"])
-    print("Paises diferentes encontrados: %d" % resultado["num_countries"])
-    print("Amount total de los pedidos filtrados: %.2f" % resultado["total_amount"])
-    print("Marketing_Spend total de los pedidos filtrados: %.2f" % resultado["total_marketing"])
-
-    if resultado["total_orders"] == 0:
-        print("\nNo se encontraron pedidos para el producto y rango de fechas indicados.")
-        return
-
-    print("\nTop %d paises por eficiencia de mercadeo:" % n)
-    encabezados = ["Country", "Pedidos", "Amount_Total", "Marketing_Total",
-                   "Boxes_Total", "Precio_Prom", "Eficiencia"]
-    filas = []
-    for pais in resultado["top"]["elements"]:
-        filas.append([
-            pais["country"], pais["count"], round(pais["amount_total"], 2),
-            round(pais["marketing_total"], 2), pais["boxes_total"],
-            round(pais["avg_price"], 2), round(pais["efficiency"], 4),
-        ])
-    _print_table(encabezados, filas)
-
-
-# =============================================================================
-# Requerimientos a cargo de otros integrantes
-# =============================================================================
 
 def print_req_3(control):
-    print("Requerimiento 3 pendiente (a cargo de otro integrante).")
+    if no_cargado(control):
+        return
+
+    fecha = input("Ingrese la fecha del pedido (YYYY-MM-DD): \n")
+    montomin = float(input("Ingrese el valor mínimo de costo total: \n"))
+    montomax = float(input("Ingrese el valor máximo de costo total: \n"))
+
+    resultado = logic.req_3(control, fecha, montomin, montomax)
+
+    print(f"\nTiempo de ejecución: {resultado['time_ms']:.3f} [ms]")
+    print(f"Pedidos que cumplieron el filtro: {resultado['count']}")
+    print(f"Monto total recaudado: {resultado['total_amount']:.2f}")
+    print(f"Inversión total en mercadeo: {resultado['total_marketing']:.2f}")
+    print(f"Aporte comercial total: {resultado['total_aporte']:.2f}")
+
+    if resultado["count"] == 0:
+        print("\nNo se encontraron pedidos para esa fecha y rango de costo total.")
+        return
+
+    encabezados = ["Order_ID", "Product", "Country", "Order_Date", "Marketing_Spend", "Boxes_Shipped", "Amount", "Aporte comercial"]
+    print("\nPedidos (descendente por Amount):")
+    print(tabulate(filas_muestra(resultado["orders"], format_req3), headers=encabezados, tablefmt="grid"))
+
+
+def format_req4(order):
+    return [order["Order_ID"], order["Channel"], order["Order_Date"], order["Boxes_Shipped"], order["Amount"]]
 
 
 def print_req_4(control):
-    print("Requerimiento 4 pendiente (grupal).")
+    if no_cargado(control):
+        return
+
+    producto = input("Ingrese el nombre del producto: \n")
+    pais = input("Ingrese el país: \n")
+
+    resultado = logic.req_4(control, producto, pais)
+
+    print(f"\nTiempo de ejecución: {resultado['time_ms']:.3f} [ms]")
+    print(f"Pedidos de '{producto}' en '{pais}': {resultado['count']}")
+
+    if resultado["count"] == 0:
+        print(f"\nNo se encontraron pedidos para '{producto}' en '{pais}'.")
+        return
+
+    tablaprom = [["Price_per_Box", f"{resultado['avg_price']:.2f}"], ["Discount_Pct", f"{resultado['avg_discount']:.2f}"], ["Marketing_Spend", f"{resultado['avg_marketing']:.2f}"], ["Boxes_Shipped", f"{resultado['avg_boxes']:.2f}"]]
+    print("\nPromedios de los pedidos:")
+    print(tabulate(tablaprom, headers=["Característica", "Promedio"], tablefmt="grid"))
+
+    print("\nLos 2 pedidos de mayor Amount:")
+    print(tabulate(filas_todas(resultado["top_orders"], format_req4), headers=["Order_ID", "Channel", "Order_Date", "Boxes_Shipped", "Amount"], tablefmt="grid"))
 
 
+def format_req5(prod):
+    return [prod["product"], prod["count"], prod["boxes_total"], round(prod["amount_total"], 2), round(prod["avg_price"], 2), round(prod["avg_discount"], 2), round(prod["marketing_total"], 2)]
 
 
-# =============================================================================
-# Menu principal
-# =============================================================================
+def print_req_5(control):
+    if no_cargado(control):
+        return
+
+    n = int(input("Ingrese el número N de productos: \n"))
+    pais = input("Ingrese el país: \n")
+    fechaini = input("Ingrese la fecha inicial (YYYY-MM-DD): \n")
+    fechafin = input("Ingrese la fecha final (YYYY-MM-DD): \n")
+
+    resultado = logic.req_5(control, n, pais, fechaini, fechafin)
+
+    print(f"\nTiempo de ejecución: {resultado['time_ms']:.3f} [ms]")
+    print(f"Pedidos que cumplieron el filtro: {resultado['total_orders']}")
+    print(f"Productos diferentes encontrados: {resultado['num_products']}")
+    print(f"Recaudo total: {resultado['total_amount']:.2f}")
+
+    if resultado["num_products"] == 0:
+        print("\nNo se encontraron pedidos para ese país y rango de fechas.")
+        return
+
+    encabezados = ["Product", "Pedidos", "Boxes_Total", "Recaudo", "Precio_Prom", "Desc_Prom", "Marketing_Total"]
+    print(f"\nTop {n} productos por recaudo:")
+    print(tabulate(filas_todas(resultado["top"], format_req5), headers=encabezados, tablefmt="grid"))
+
+
+def format_req6(pais):
+    return [pais["country"], pais["count"], round(pais["amount_total"], 2), round(pais["marketing_total"], 2), pais["boxes_total"], round(pais["avg_price"], 2), round(pais["efficiency"], 4)]
+
+
+def print_req_6(control):
+    if no_cargado(control):
+        return
+
+    n = int(input("Ingrese el número N de países: \n"))
+    producto = input("Ingrese el producto: \n")
+    fechaini = input("Ingrese la fecha inicial (YYYY-MM-DD): \n")
+    fechafin = input("Ingrese la fecha final (YYYY-MM-DD): \n")
+
+    resultado = logic.req_6(control, n, producto, fechaini, fechafin)
+
+    print(f"\nTiempo de ejecución: {resultado['time_ms']:.3f} [ms]")
+    print(f"Pedidos que cumplieron el filtro: {resultado['total_orders']}")
+    print(f"Países diferentes encontrados: {resultado['num_countries']}")
+    print(f"Amount total: {resultado['total_amount']:.2f}")
+    print(f"Marketing_Spend total: {resultado['total_marketing']:.2f}")
+
+    if resultado["total_orders"] == 0:
+        print("\nNo se encontraron pedidos para ese producto y rango de fechas.")
+        return
+
+    encabezados = ["Country", "Pedidos", "Amount_Total", "Marketing_Total", "Boxes_Total", "Precio_Prom", "Eficiencia"]
+    print(f"\nTop {n} países por eficiencia de mercadeo:")
+    print(tabulate(filas_todas(resultado["top"], format_req6), headers=encabezados, tablefmt="grid"))
+
 
 control = new_logic()
 
 
 def main():
-    """Menu principal."""
     working = True
     while working:
         print_menu()
-        inputs = input("Seleccione una opcion para continuar\n").strip()
-        if inputs == "0":
+        inputs = input("Seleccione una opción para continuar\n")
+        if int(inputs) == 0:
+            print("Cargando información de los archivos ....\n")
             load_data(control)
-        elif inputs == "1":
+        elif int(inputs) == 1:
             print_req_1(control)
-        elif inputs == "2":
+        elif int(inputs) == 2:
             print_req_2(control)
-        elif inputs == "3":
+        elif int(inputs) == 3:
             print_req_3(control)
-        elif inputs == "4":
+        elif int(inputs) == 4:
             print_req_4(control)
-        elif inputs == "5":
+        elif int(inputs) == 5:
             print_req_5(control)
-        elif inputs == "6":
+        elif int(inputs) == 6:
             print_req_6(control)
-        elif inputs == "7":
+        elif int(inputs) == 7:
             working = False
             print("\nGracias por utilizar el programa")
         else:
-            print("Opcion erronea, vuelva a elegir.\n")
+            print("Opción errónea, vuelva a elegir.\n")
     sys.exit(0)
